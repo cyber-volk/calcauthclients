@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  role      String   // 'user', 'agent', 'admin'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  agent     Agent?   @relation("AgentUsers", fields: [agentId], references: [id])
+  agentId   String?
+  sites     Site[]
+  forms     Form[]
+  ownedClients Client[] @relation("OwnedClients")
+  agentClients Client[] @relation("AgentClients")
+}
+
+model Agent {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  maxUsers  Int      @default(10)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  users     User[]   @relation("AgentUsers")
+}
+
+model Site {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  forms       Form[]
+}
+
+model Form {
+  id          String   @id @default(uuid())
+  name        String
+  data        String   // JSON string of form data
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  site        Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  siteId      String
+}
+
+model Client {
+  id            String    @id @default(cuid())
+  name          String
+  email         String?
+  phone         String?
+  initialCredit Float     @default(0)
+  notes         String?
+  status        String    @default("active")
+  ownerId       String
+  ownerRole     String
+  agentId       String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  owner         User      @relation("OwnedClients", fields: [ownerId], references: [id])
+  agent         User      @relation("AgentClients", fields: [agentId], references: [id])
+  transactions  ClientTransaction[]
+
+  @@index([ownerId])
+  @@index([agentId])
+}
+
+model ClientTransaction {
+  id          String   @id @default(cuid())
+  clientId    String
+  type        String   // credit, payment, expense, withdrawal
+  amount      Float
+  description String?
+  createdAt   DateTime @default(now())
+  client      Client   @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+}
