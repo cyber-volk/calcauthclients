@@ -1,6 +1,7 @@
 import './globals.css'
 import { AuthProvider } from './context/AuthContext'
 import { Toaster } from "@/components/ui/toaster"
+import Navigation from './components/Navigation'
 
 export const metadata = {
   title: 'Calculator App',
@@ -16,7 +17,10 @@ export default function RootLayout({
     <html lang="en">
       <body className="h-full">
         <AuthProvider>
-          {children}
+          <Navigation />
+          <div className="pt-16">
+            {children}
+          </div>
           <Toaster />
         </AuthProvider>
       </body>

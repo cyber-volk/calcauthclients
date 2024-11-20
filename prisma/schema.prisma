@@ -19,12 +19,14 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relationships
-  agent     Agent?   @relation("AgentUsers", fields: [agentId], references: [id])
-  agentId   String?
-  sites     Site[]
-  forms     Form[]
-  ownedClients Client[] @relation("OwnedClients")
-  agentClients Client[] @relation("AgentClients")
+  agent         Agent?    @relation("AgentUsers", fields: [agentId], references: [id])
+  agentId       String?
+  sites         Site[]
+  forms         Form[]
+  ownedClients  Client[]  @relation("OwnedClients")
+  hssebSessions HssebSession[] @relation("UserHssebSessions")
+
+  @@index([agentId])
 }
 
 model Agent {
@@ -37,33 +39,135 @@ model Agent {
 
   // Relationships
   users     User[]   @relation("AgentUsers")
+  sites     Site[]   @relation("AgentSites")
+  forms     Form[]   @relation("AgentForms")
+  managedClients Client[] @relation("AgentManagedClients")
+  hssebSessions HssebSession[] @relation("AgentHssebSessions")
+
 }
 
 model Site {
   id          String   @id @default(uuid())
   name        String
   description String?
+  color       String   @default("none")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relationships
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String
+  agent       Agent?   @relation("AgentSites", fields: [agentId], references: [id])
+  agentId     String?
   forms       Form[]
+
+  @@index([userId])
+  @@index([agentId])
 }
 
 model Form {
-  id          String   @id @default(uuid())
-  name        String
-  data        String   // JSON string of form data
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  name           String
+  multiplier     String   @default("1.1")
+  fond           String?  // initial fund
+  soldeALinstant String?  // current balance
+  soldeDeDebut   String?  // starting balance
+  result         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relationships
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  site        Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  siteId      String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  site          Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  siteId        String
+  agent         Agent?   @relation("AgentForms", fields: [agentId], references: [id])
+  agentId       String?
+  hssebSession      HssebSession?       @relation("SessionForms", fields: [hssebSessionId], references: [id])
+  hssebSessionId    String?
+  verification      HssebVerification?  @relation("VerificationForms", fields: [verificationId], references: [id])
+  verificationId    String?
+
+  // Form Tables
+  creditRows      CreditRow[]
+  creditPayeeRows CreditPayeeRow[]
+  depenseRows     DepenseRow[]
+  retraitRows     RetraitRow[]
+
+  // History tracking
+  parentForm      Form?    @relation("FormHistory", fields: [parentFormId], references: [id])
+  parentFormId    String?
+  childForms      Form[]   @relation("FormHistory")
+
+  @@index([userId])
+  @@index([siteId])
+  @@index([agentId])
+  @@index([hssebSessionId])
+  @@index([verificationId])
+}
+
+model CreditRow {
+  id          String   @id @default(uuid())
+  totalClient String
+  details     String
+  clientId    String
+  formId      String
+  createdAt   DateTime @default(now())
+
+  // Relationships
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  client      Client   @relation(fields: [clientId], references: [id])
+
+  @@index([formId])
+  @@index([clientId])
+}
+
+model CreditPayeeRow {
+  id          String   @id @default(uuid())
+  totalPayee  String
+  details     String
+  clientId    String
+  formId      String
+  createdAt   DateTime @default(now())
+
+  // Relationships
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  client      Client   @relation(fields: [clientId], references: [id])
+
+  @@index([formId])
+  @@index([clientId])
+}
+
+model DepenseRow {
+  id           String   @id @default(uuid())
+  totalDepense String
+  details      String
+  clientId     String
+  formId       String
+  createdAt    DateTime @default(now())
+
+  // Relationships
+  form         Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  client       Client   @relation(fields: [clientId], references: [id])
+
+  @@index([formId])
+  @@index([clientId])
+}
+
+model RetraitRow {
+  id           String   @id @default(uuid())
+  retraitPayee String
+  retrait      String
+  clientId     String
+  formId       String
+  createdAt    DateTime @default(now())
+
+  // Relationships
+  form         Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  client       Client   @relation(fields: [clientId], references: [id])
+
+  @@index([formId])
+  @@index([clientId])
 }
 
 model Client {
@@ -74,17 +178,44 @@ model Client {
   initialCredit Float     @default(0)
   notes         String?
   status        String    @default("active")
+  isVIP         Boolean   @default(false)
+  verificationRequired Boolean @default(false)
+  lastVerificationDate DateTime?
+  verificationFrequency Int?     // Days between required verifications for VIP clients
   ownerId       String
   ownerRole     String
   agentId       String
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  owner         User      @relation("OwnedClients", fields: [ownerId], references: [id])
-  agent         User      @relation("AgentClients", fields: [agentId], references: [id])
-  transactions  ClientTransaction[]
+
+  // Relationships
+  owner           User      @relation("OwnedClients", fields: [ownerId], references: [id])
+  managingAgent   Agent     @relation("AgentManagedClients", fields: [agentId], references: [id])
+  creditRows      CreditRow[]
+  creditPayeeRows CreditPayeeRow[]
+  depenseRows     DepenseRow[]
+  retraitRows     RetraitRow[]
+  transactions    ClientTransaction[]
+  ledger          ClientLedger? @relation("ClientLedger")
+  notifications   ClientNotification[]
 
   @@index([ownerId])
   @@index([agentId])
+}
+
+model ClientNotification {
+  id          String   @id @default(cuid())
+  clientId    String
+  type        String   // balance_alert, verification_needed, withdrawal_large
+  message     String
+  status      String   @default("unread") // unread, read, dismissed
+  createdAt   DateTime @default(now())
+  readAt      DateTime?
+  
+  // Relationships
+  client      Client   @relation(fields: [clientId], references: [id])
+  
+  @@index([clientId])
 }
 
 model ClientTransaction {
@@ -97,4 +228,102 @@ model ClientTransaction {
   client      Client   @relation(fields: [clientId], references: [id])
 
   @@index([clientId])
+}
+
+model ClientLedger {
+  id            String   @id @default(cuid())
+  clientId      String
+  totalCredit   Float    @default(0)
+  totalPayee    Float    @default(0)
+  balance       Float    @default(0)
+  lastUpdated   DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  notes         String?
+  lastVerificationDate DateTime?
+  verificationStatus String? // verified, needs_verification, disputed
+
+  // Relationships
+  client        Client   @relation("ClientLedger", fields: [clientId], references: [id])
+  entries       ClientLedgerEntry[]
+  verificationHistory ClientLedgerVerification[]
+
+  @@index([clientId])
+}
+
+model ClientLedgerVerification {
+  id            String   @id @default(cuid())
+  ledgerId      String
+  verifiedAt    DateTime @default(now())
+  verifiedBy    String   // User ID who performed verification
+  previousBalance Float
+  verifiedBalance Float
+  notes         String?
+  status        String   // verified, disputed
+  resolution    String?
+
+  // Relationships
+  ledger        ClientLedger @relation(fields: [ledgerId], references: [id])
+
+  @@index([ledgerId])
+}
+
+model ClientLedgerEntry {
+  id            String   @id @default(cuid())
+  ledgerId      String
+  sessionId     String?
+  type          String   // credit, payee
+  amount        Float
+  previousBalance Float
+  newBalance    Float
+  date          DateTime @default(now())
+  notes         String?
+
+  // Relationships
+  ledger        ClientLedger @relation(fields: [ledgerId], references: [id])
+  session       HssebSession? @relation(fields: [sessionId], references: [id])
+
+  @@index([ledgerId])
+  @@index([sessionId])
+}
+
+model HssebSession {
+  id            String   @id @default(cuid())
+  name          String
+  startDate     DateTime
+  endDate       DateTime?
+  status        String   @default("active") // active, completed, disputed
+  totalAmount   Float?
+  finalResult   Float?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  agent         Agent     @relation("AgentHssebSessions", fields: [agentId], references: [id])
+  agentId       String
+  user          User      @relation("UserHssebSessions", fields: [userId], references: [id])
+  userId        String
+  forms         Form[]    @relation("SessionForms")
+  verifications HssebVerification[]
+  ledgerEntries ClientLedgerEntry[]
+
+  @@index([agentId])
+  @@index([userId])
+}
+
+model HssebVerification {
+  id            String   @id @default(cuid())
+  date          DateTime @default(now())
+  status        String   // pending, verified, disputed
+  agentNotes    String?
+  userNotes     String?
+  difference    Float?   @default(0)
+  resolution    String?
+  
+  // Relationships
+  session       HssebSession @relation(fields: [sessionId], references: [id])
+  sessionId     String
+  forms         Form[]       @relation("VerificationForms")
+
+  @@index([sessionId])
 }
